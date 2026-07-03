@@ -1,6 +1,6 @@
-const DATA_KEY = 'shows';
+const STATE_KEY = 'shows';
 
-function jsonResponse(data, status = 200) {
+function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
@@ -10,69 +10,58 @@ function jsonResponse(data, status = 200) {
   });
 }
 
-function validateShows(value) {
-  if (!Array.isArray(value)) return false;
-  return value.every(item => {
-    return item &&
-      typeof item.id === 'string' &&
-      typeof item.title === 'string' &&
-      typeof item.start === 'string' &&
-      typeof item.end === 'string' &&
-      (item.venue === undefined || item.venue === null || typeof item.venue === 'string') &&
-      (item.runtime === undefined || item.runtime === null || typeof item.runtime === 'number') &&
-      (item.color === undefined || item.color === null || typeof item.color === 'string') &&
-      (item.watched === undefined || Array.isArray(item.watched));
-  });
-}
-
-export async function onRequestGet({ env }) {
-  try {
-    if (!env.DB) {
-      return jsonResponse({ error: 'D1 binding DB가 연결되지 않았습니다.' }, 500);
-    }
-
-    const row = await env.DB
-      .prepare('SELECT value FROM app_data WHERE key = ?')
-      .bind(DATA_KEY)
-      .first();
-
-    const shows = row && row.value ? JSON.parse(row.value) : [];
-    return jsonResponse({ shows });
-  } catch (error) {
-    return jsonResponse({ error: error.message || '데이터를 불러오지 못했습니다.' }, 500);
+export async function onRequestGet(context) {
+  const { env } = context;
+  if (!env.DB) {
+    return json({ error: 'D1 binding DB가 없습니다.' }, 500);
   }
-}
 
-export async function onRequestPut({ request, env }) {
+  const row = await env.DB
+    .prepare('SELECT value FROM app_state WHERE key = ?')
+    .bind(STATE_KEY)
+    .first();
+
+  if (!row || !row.value) {
+    return json({ shows: [] });
+  }
+
   try {
-    if (!env.DB) {
-      return jsonResponse({ error: 'D1 binding DB가 연결되지 않았습니다.' }, 500);
-    }
-
-    const body = await request.json();
-    const shows = body.shows;
-
-    if (!validateShows(shows)) {
-      return jsonResponse({ error: '저장할 공연 데이터 형식이 올바르지 않습니다.' }, 400);
-    }
-
-    await env.DB
-      .prepare(`
-        INSERT INTO app_data (key, value, updated_at)
-        VALUES (?, ?, datetime('now'))
-        ON CONFLICT(key) DO UPDATE SET
-          value = excluded.value,
-          updated_at = datetime('now')
-      `)
-      .bind(DATA_KEY, JSON.stringify(shows))
-      .run();
-
-    return jsonResponse({ ok: true, saved: shows.length });
+    return json({ shows: JSON.parse(row.value) });
   } catch (error) {
-    return jsonResponse({ error: error.message || '데이터를 저장하지 못했습니다.' }, 500);
+    return json({ shows: [] });
   }
 }
 
 export async function onRequestPost(context) {
-  return onRequestPut(context);
+  const { request, env } = context;
+  if (!env.DB) {
+    return json({ error: 'D1 binding DB가 없습니다.' }, 500);
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (error) {
+    return json({ error: 'JSON 형식이 아닙니다.' }, 400);
+  }
+
+  const shows = Array.isArray(body.shows) ? body.shows : [];
+  const value = JSON.stringify(shows);
+
+  await env.DB
+    .prepare(`
+      INSERT INTO app_state (key, value, updated_at)
+      VALUES (?, ?, datetime('now'))
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value,
+        updated_at = datetime('now')
+    `)
+    .bind(STATE_KEY, value)
+    .run();
+
+  return json({ ok: true });
+}
+
+export async function onRequestOptions() {
+  return new Response(null, { status: 204 });
 }

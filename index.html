@@ -294,7 +294,7 @@
   <div class="masthead">
     <div>
       <h1>공연 일정표</h1>
-      <div class="sub">보고 있는 뮤지컬의 공연 기간을 한눈에 · 이 링크로 들어온 모두가 D1 공유 DB의 같은 목록을 보고 함께 입력해요</div>
+      <div class="sub">보고 있는 뮤지컬의 공연 기간을 한눈에 · 이 링크로 들어온 모두가 같은 목록을 보고 함께 입력해요</div>
     </div>
     <button class="btn" id="addBtn">+ 공연 추가</button>
   </div>
@@ -335,22 +335,16 @@ function todayD(){ const t=new Date(); return new Date(t.getFullYear(),t.getMont
 
 async function loadShows(){
   try{
-    const res = await fetch('/api/shows', {
-      method: 'GET',
-      headers: { 'Accept': 'application/json' },
-      cache: 'no-store'
-    });
-
+    const res = await fetch('/api/shows', { cache: 'no-store' });
     if(!res.ok){
-      throw new Error('서버 응답 오류 ' + res.status);
+      throw new Error('불러오기 실패: ' + res.status);
     }
-
     const data = await res.json();
     shows = Array.isArray(data.shows) ? data.shows : [];
   }catch(e){
     console.error('불러오기 실패', e);
     shows = [];
-    showSaveStatus('공유 데이터를 불러오지 못했어요. D1 연결과 schema.sql 실행 여부를 확인해주세요.', true, true);
+    showSaveStatus('공유 DB에서 데이터를 불러오지 못했어요. D1 바인딩(DB)과 schema.sql 실행 여부를 확인해주세요.', true, true);
   }
   render();
 }
@@ -359,17 +353,15 @@ async function saveShows(attempt){
   attempt = attempt || 1;
   try{
     const res = await fetch('/api/shows', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ shows })
     });
-
     if(!res.ok){
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || ('서버 응답 오류 ' + res.status));
+      const text = await res.text().catch(() => '');
+      throw new Error(text || ('저장 실패: ' + res.status));
     }
-
-    showSaveStatus('공유 DB에 저장됨', false);
+    showSaveStatus('저장됨', false);
     return true;
   }catch(e){
     console.error('저장 실패', e);
