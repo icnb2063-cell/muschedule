@@ -282,10 +282,81 @@
   .modal-actions{display:flex;justify-content:space-between;align-items:center;margin-top:20px;}
   .modal-actions .right{display:flex;gap:8px;}
 
-  @media (max-width:640px){
-    .app{padding:24px 14px 60px;}
+
+
+  .mobile-list{
+    display:none;
+    padding:14px;
+    background:var(--paper-raised);
+  }
+  .mobile-section-title{
+    font-family:'Noto Serif KR',serif;
+    font-size:16px;
+    font-weight:700;
+    margin:14px 0 8px;
+    color:var(--ink);
+  }
+  .mobile-section-title:first-child{margin-top:0;}
+  .mobile-card{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:15px 16px;
+    margin:10px 0;
+    cursor:pointer;
+    box-shadow:0 1px 0 rgba(0,0,0,0.04);
+  }
+  .mobile-card:active{transform:scale(0.99);}
+  .mobile-card-top{display:flex;align-items:center;gap:9px;margin-bottom:7px;}
+  .mobile-color-dot{width:10px;height:10px;border-radius:50%;flex:0 0 auto;}
+  .mobile-title{font-size:17px;font-weight:700;color:var(--ink);line-height:1.25;}
+  .mobile-date{font-size:14px;color:var(--ink-soft);margin-bottom:5px;}
+  .mobile-info,.mobile-watch{font-size:13px;color:var(--ink-soft);line-height:1.45;}
+  .mobile-status{
+    display:inline-block;
+    font-size:11px;
+    font-weight:700;
+    border-radius:999px;
+    padding:3px 8px;
+    margin-left:auto;
+    background:var(--gold-soft);
+    color:var(--curtain-deep);
+    white-space:nowrap;
+  }
+  .mobile-add-btn{display:none;}
+
+  @media (max-width:700px){
+    .app{padding:22px 12px 86px;}
+    .masthead{align-items:flex-start;gap:12px;}
     .masthead h1{font-size:24px;}
-    .row-label{padding:8px 10px;}
+    .masthead .sub{font-size:12px;line-height:1.45;}
+    .masthead #addBtn{display:none;}
+    .toolbar{margin:16px 0 12px;}
+    .legend{font-size:11.5px;line-height:1.4;}
+    #todayBtn{display:none;}
+    .gantt-scroll{display:none !important;}
+    .mobile-list{display:block;}
+    .stage{border-radius:12px;}
+    .modal-overlay{align-items:flex-end;padding:0;}
+    .modal{max-width:none;border-radius:18px 18px 0 0;padding:22px 18px 18px;max-height:92vh;overflow:auto;}
+    .modal h2{font-size:18px;margin-bottom:15px;}
+    .field{margin-bottom:12px;}
+    .field input,.field select{font-size:16px;padding:12px 12px;min-height:46px;}
+    .row2{flex-direction:column;gap:0;}
+    .btn{min-height:44px;font-size:15px;padding:10px 16px;}
+    .btn.small{min-height:42px;font-size:13px;}
+    .modal-actions{gap:10px;align-items:stretch;}
+    .modal-actions .right{flex:1;justify-content:flex-end;}
+    .mobile-add-btn{
+      display:block;
+      position:fixed;
+      left:14px;
+      right:14px;
+      bottom:14px;
+      z-index:40;
+      border-radius:14px;
+      box-shadow:0 6px 20px rgba(43,33,23,0.2);
+    }
   }
 </style>
 </head>
@@ -313,9 +384,11 @@
     <div class="gantt-scroll" id="ganttScroll">
       <div class="gantt-grid" id="ganttGrid"></div>
     </div>
+    <div id="mobileList" class="mobile-list"></div>
   </div>
 </div>
 
+<button class="btn mobile-add-btn" id="mobileAddBtn">+ 공연 추가</button>
 <div id="modalRoot"></div>
 
 <script>
@@ -410,9 +483,11 @@ function getRange(){
 function render(){
   const empty = document.getElementById('emptyState');
   const scroll = document.getElementById('ganttScroll');
+  const mobileList = document.getElementById('mobileList');
   if(shows.length === 0){
     empty.style.display = 'block';
     scroll.style.display = 'none';
+    if(mobileList) mobileList.innerHTML = '';
     return;
   }
   empty.style.display = 'none';
@@ -424,6 +499,7 @@ function render(){
   const todayIdx = dayDiff(start, t);
 
   const sorted = [...shows].sort((a,b)=> parseD(a.start) - parseD(b.start));
+  renderMobileList(sorted);
 
   const availableW = scroll.clientWidth - LABEL_W - 2;
   const dayW = Math.max(5, Math.min(34, Math.floor(availableW / totalDays)));
@@ -535,6 +611,63 @@ function render(){
     if(scroll.scrollWidth > scroll.clientWidth){
       scroll.scrollLeft = Math.max(0, (todayIdx - 3) * dayW);
     }
+  });
+}
+
+
+function formatDateKo(dateStr){
+  if(!dateStr) return '';
+  const d = parseD(dateStr);
+  return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function getShowStatus(show){
+  const t = todayD();
+  const s = parseD(show.start);
+  const e = parseD(show.end);
+  if(t < s) return '예정';
+  if(t > e) return '종료';
+  return '진행 중';
+}
+
+function renderMobileList(sortedShows){
+  const list = document.getElementById('mobileList');
+  if(!list) return;
+  const groups = [
+    ['진행 중', sortedShows.filter(s => getShowStatus(s) === '진행 중')],
+    ['예정', sortedShows.filter(s => getShowStatus(s) === '예정')],
+    ['종료', sortedShows.filter(s => getShowStatus(s) === '종료')]
+  ].filter(([,items]) => items.length > 0);
+
+  list.innerHTML = groups.map(([title, items]) => `
+    <div class="mobile-section-title">${title}</div>
+    ${items.map((show, idx) => {
+      const info = [escapeHtml(show.venue || ''), show.runtime ? show.runtime + '분' : ''].filter(Boolean).join(' · ');
+      const watched = (show.watched || []).slice().sort().map(formatDateKo).join(', ');
+      const color = show.color || PALETTE[idx % PALETTE.length];
+      return `
+        <article class="mobile-card" data-id="${show.id}" role="button" tabindex="0" aria-label="${escapeHtml(show.title)} 수정하기">
+          <div class="mobile-card-top">
+            <span class="mobile-color-dot" style="background:${color}"></span>
+            <div class="mobile-title">${escapeHtml(show.title)}</div>
+            <span class="mobile-status">${getShowStatus(show)}</span>
+          </div>
+          <div class="mobile-date">${formatDateKo(show.start)} ~ ${formatDateKo(show.end)}</div>
+          ${info ? `<div class="mobile-info">${info}</div>` : ''}
+          <div class="mobile-watch">관람일: ${watched || '아직 없음'}</div>
+        </article>
+      `;
+    }).join('')}
+  `).join('');
+
+  list.querySelectorAll('.mobile-card').forEach(card => {
+    card.addEventListener('click', () => openModal(card.dataset.id));
+    card.addEventListener('keydown', (e) => {
+      if(e.key === 'Enter' || e.key === ' '){
+        e.preventDefault();
+        openModal(card.dataset.id);
+      }
+    });
   });
 }
 
@@ -690,6 +823,7 @@ function closeModal(){
 }
 
 document.getElementById('addBtn').addEventListener('click', () => openModal(null));
+document.getElementById('mobileAddBtn').addEventListener('click', () => openModal(null));
 document.getElementById('emptyAddBtn').addEventListener('click', () => openModal(null));
 document.getElementById('todayBtn').addEventListener('click', () => {
   const scroll = document.getElementById('ganttScroll');
